@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Santa - VCN Official App</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase Compat SDKs (works smoothly on file:// and http://) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-slate-200">
+        <div class="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    🎄
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-slate-900 leading-tight">Secret Santa</h1>
+                    <p class="text-xs text-slate-500">VCN Official App</p>
+                </div>
+            </div>
+            <div id="room-header-badge" class="hidden text-xs font-semibold px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full">
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-md w-full mx-auto p-4 flex flex-col">
+
+        <!-- VIEW 1: JOIN ROOM -->
+        <div id="view-join" class="space-y-6 my-auto">
+            <div class="text-center space-y-2">
+                <div class="w-20 h-20 mx-auto bg-indigo-100 rounded-full flex items-center justify-center text-3xl shadow-inner">
+                    🎅🍻
+                </div>
+                <h2 class="text-2xl font-bold text-slate-900">Entra in Stanza</h2>
+                <p class="text-sm text-slate-600">Inserisci il codice fornito dall'organizzatore per partecipare da iPhone o Browser.</p>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Codice Stanza (4 caratteri)</label>
+                    <input type="text" id="input-code" maxlength="4" placeholder="Es. 7K9P" class="w-full px-4 py-3 uppercase tracking-widest text-center text-xl font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Il tuo Nome</label>
+                    <input type="text" id="input-name" placeholder="Es. Marco" class="w-full px-4 py-3 text-base border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <button onclick="joinRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-200 transition">
+                    Entra nella Stanza
+                </button>
+            </div>
+
+            <div id="join-error" class="hidden p-3 bg-red-50 text-red-700 text-sm rounded-xl text-center font-medium"></div>
+        </div>
+
+        <!-- VIEW 2: ROOM APP -->
+        <div id="view-room" class="hidden space-y-6 flex-1 flex flex-col">
+
+            <!-- Room Info Bar -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <h3 id="room-name" class="font-bold text-slate-900 text-base">Nome Stanza</h3>
+                    <p class="text-xs text-slate-500">Partecipante: <span id="my-name" class="font-semibold text-indigo-600"></span></p>
+                </div>
+                <button onclick="leaveRoom()" class="text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition">
+                    Esci
+                </button>
+            </div>
+
+            <!-- Participants & Voting Status Banner -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-600">👥 Partecipanti (<span id="count-participants">0</span>)</span>
+                    <span id="voting-status-text" class="text-xs font-semibold text-indigo-600"></span>
+                </div>
+                <div id="participants-list" class="flex flex-wrap gap-2">
+                    <!-- Dynamic participants chips -->
+                </div>
+            </div>
+
+            <!-- PHASE CONTAINER -->
+            <div id="phase-container" class="flex-1 flex flex-col space-y-4">
+                <!-- Dynamically populated based on room.phase -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center py-4 text-xs text-slate-400">
+        Secret Santa • Powered by Firebase & VCN
+    </footer>
+
+    <!-- Firebase App Logic -->
+    <script>
+        // Firebase Configuration extracted from google-services.json
+        const firebaseConfig = {
+            apiKey: "AIzaSyA85_hk6cEoBhOgeFDFs5kMyJFQimxRVYE",
+            projectId: "secretsanta-9c1ec",
+            storageBucket: "secretsanta-9c1ec.firebasestorage.app"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let currentRoomCode = null;
+        let participantName = null;
+        let unsubscribeRoom = null;
+        let roomData = null;
+
+        window.joinRoom = async function() {
+            const code = document.getElementById('input-code').value.trim().toUpperCase();
+            const name = document.getElementById('input-name').value.trim();
+            const errDiv = document.getElementById('join-error');
+
+            if (code.length !== 4) {
+                errDiv.textContent = "Inserisci un codice stanza valido di 4 caratteri.";
+                errDiv.classList.remove('hidden');
+                return;
+            }
+            if (!name) {
+                errDiv.textContent = "Inserisci il tuo nome.";
+                errDiv.classList.remove('hidden');
+                return;
+            }
+
+            errDiv.classList.add('hidden');
+
+            try {
+                const docRef = db.collection("rooms").doc(code);
+                const docSnap = await docRef.get();
+
+                if (!docSnap.exists) {
+                    errDiv.textContent = `Nessuna stanza trovata con il codice ${code}`;
+                    errDiv.classList.remove('hidden');
+                    return;
+                }
+
+                currentRoomCode = code;
+                participantName = name;
+
+                // Add participant to room if not present
+                const data = docSnap.data();
+                const participants = data.participants || [];
+                if (!participants.some(p => p.toLowerCase() === name.toLowerCase())) {
+                    await docRef.update({
+                        participants: firebase.firestore.FieldValue.arrayUnion(name)
+                    });
+                }
+
+                document.getElementById('view-join').classList.add('hidden');
+                document.getElementById('view-room').classList.remove('hidden');
+                document.getElementById('my-name').textContent = name;
+
+                observeRoom(code);
+
+            } catch (err) {
+                console.error(err);
+                errDiv.textContent = "Errore di connessione: " + err.message;
+                errDiv.classList.remove('hidden');
+            }
+        };
+
+        function observeRoom(code) {
+            if (unsubscribeRoom) unsubscribeRoom();
+
+            unsubscribeRoom = db.collection("rooms").doc(code).onSnapshot((docSnap) => {
+                if (docSnap.exists) {
+                    roomData = docSnap.data();
+                    renderRoom();
+                }
+            });
+        }
+
+        window.leaveRoom = function() {
+            if (unsubscribeRoom) unsubscribeRoom();
+            currentRoomCode = null;
+            roomData = null;
+            document.getElementById('view-room').classList.add('hidden');
+            document.getElementById('view-join').classList.remove('hidden');
+        };
+
+        function renderRoom() {
+            if (!roomData) return;
+
+            document.getElementById('room-name').textContent = roomData.name || "Cena Secret Santa";
+
+            const badge = document.getElementById('room-header-badge');
+            badge.textContent = `Stanza: ${roomData.code}`;
+            badge.classList.remove('hidden');
+
+            // Participants
+            const participants = roomData.participants || [];
+            document.getElementById('count-participants').textContent = participants.length;
+
+            const voters = (roomData.votes || []).map(v => v.voterName.trim().toLowerCase());
+            const listEl = document.getElementById('participants-list');
+            listEl.innerHTML = participants.map(p => {
+                const hasVoted = voters.includes(p.toLowerCase());
+                const isMe = p.toLowerCase() === participantName.toLowerCase();
+                let statusIcon = '';
+                if (roomData.phase === 'VOTING') {
+                    statusIcon = hasVoted ? ' ✅' : ' ⏳';
+                }
+                return `<span class="text-xs px-2.5 py-1 rounded-full font-medium ${isMe ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}">${p}${statusIcon}</span>`;
+            }).join('');
+
+            if (roomData.phase === 'VOTING') {
+                document.getElementById('voting-status-text').textContent = `${voters.length}/${participants.length} hanno votato`;
+            } else {
+                document.getElementById('voting-status-text').textContent = '';
+            }
+
+            // Phase Container
+            const container = document.getElementById('phase-container');
+            if (roomData.phase === 'PROPOSAL') {
+                renderProposalPhase(container);
+            } else if (roomData.phase === 'VOTING') {
+                renderVotingPhase(container);
+            } else if (roomData.phase === 'RESULTS') {
+                renderResultsPhase(container);
+            }
+        }
+
+        function renderProposalPhase(container) {
+            const restaurants = roomData.restaurants || [];
+            container.innerHTML = `
+                <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-start space-x-3">
+                    <span class="text-2xl">📍</span>
+                    <div>
+                        <h4 class="font-bold text-sm text-indigo-950">Fase 1: Raccolta Proposte</h4>
+                        <p class="text-xs text-indigo-800 mt-0.5">Proponi i tuoi ristoranti preferiti inserendo il nome e il link di Google Maps.</p>
+                    </div>
+                </div>
+
+                <!-- Add Restaurant Form -->
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                    <h4 class="font-bold text-sm text-slate-900">Aggiungi Ristorante</h4>
+                    <input type="text" id="rest-name" placeholder="Nome Ristorante" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <input type="text" id="rest-cuisine" placeholder="Tipo Cucina (es. Pizzeria, Giapponese)" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <input type="text" id="rest-url" placeholder="Link Google Maps (opzionale)" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <button onclick="addRestaurant()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition shadow-md shadow-indigo-100">
+                        Proponi Ristorante
+                    </button>
+                </div>
+
+                <!-- Restaurants List -->
+                <div class="space-y-3">
+                    <h4 class="font-bold text-sm text-slate-800">Proposti finora (${restaurants.length})</h4>
+                    ${restaurants.length === 0 ? '<p class="text-xs text-slate-400 text-center py-6">Ancora nessun ristorante proposto.</p>' : ''}
+                    <div class="space-y-2">
+                        ${restaurants.map(r => `
+                            <div class="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                                <div>
+                                    <h5 class="font-bold text-sm text-slate-900">${escapeHtml(r.name)}</h5>
+                                    ${r.cuisineType ? `<span class="inline-block bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-md mt-1 font-medium">${escapeHtml(r.cuisineType)}</span>` : ''}
+                                    <p class="text-xs text-slate-400 mt-1">Proposto da ${escapeHtml(r.proposedBy)}</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    ${r.mapsUrl ? `<a href="${escapeHtml(r.mapsUrl)}" target="_blank" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold">Maps</a>` : ''}
+                                    ${r.proposedBy.toLowerCase() === participantName.toLowerCase() ? `<button onclick="removeRestaurant('${r.id}')" class="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold">Elimina</button>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.addRestaurant = async function() {
+            const name = document.getElementById('rest-name').value.trim();
+            const cuisine = document.getElementById('rest-cuisine').value.trim();
+            const url = document.getElementById('rest-url').value.trim();
+
+            if (!name) {
+                alert("Inserisci il nome del ristorante.");
+                return;
+            }
+
+            const newRest = {
+                id: 'rest_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                name: name,
+                cuisineType: cuisine,
+                mapsUrl: url,
+                proposedBy: participantName,
+                timestamp: Date.now()
+            };
+
+            try {
+                const docRef = db.collection("rooms").doc(currentRoomCode);
+                await docRef.update({
+                    restaurants: firebase.firestore.FieldValue.arrayUnion(newRest)
+                });
+                document.getElementById('rest-name').value = '';
+                document.getElementById('rest-cuisine').value = '';
+                document.getElementById('rest-url').value = '';
+            } catch (err) {
+                alert("Errore: " + err.message);
+            }
+        };
+
+        window.removeRestaurant = async function(id) {
+            try {
+                const docRef = db.collection("rooms").doc(currentRoomCode);
+                const updated = (roomData.restaurants || []).filter(r => r.id !== id);
+                await docRef.update({ restaurants: updated });
+            } catch (err) {
+                alert("Errore: " + err.message);
+            }
+        };
+
+        function renderVotingPhase(container) {
+            const restaurants = roomData.restaurants || [];
+            const myVote = (roomData.votes || []).find(v => v.voterName.toLowerCase() === participantName.toLowerCase());
+
+            container.innerHTML = `
+                <div class="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-start space-x-3">
+                    <span class="text-2xl">🗳️</span>
+                    <div>
+                        <h4 class="font-bold text-sm text-amber-950">Fase 2: Votazione & Veti</h4>
+                        <p class="text-xs text-amber-800 mt-0.5">Seleziona la tua preferenza per ciascun ristorante o metti un veto assoluto se non vuoi andarci.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <h4 class="font-bold text-sm text-slate-800">Ristoranti in Gara (${restaurants.length})</h4>
+                    <div id="voting-items" class="space-y-3">
+                        ${restaurants.map((r, idx) => {
+                            const existingRank = myVote && myVote.rankings ? (myVote.rankings[r.id] || '') : (idx + 1);
+                            const existingVeto = myVote && myVote.vetoes ? (myVote.vetoes[r.id] || '') : '';
+                            return `
+                                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3 voting-card" data-id="${r.id}">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <h5 class="font-bold text-slate-900">${escapeHtml(r.name)}</h5>
+                                            ${r.cuisineType ? `<span class="inline-block bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-md mt-0.5 font-medium">${escapeHtml(r.cuisineType)}</span>` : ''}
+                                        </div>
+                                        ${r.mapsUrl ? `<a href="${escapeHtml(r.mapsUrl)}" target="_blank" class="text-xs text-indigo-600 font-semibold px-2 py-1 bg-indigo-50 rounded-lg">Maps</a>` : ''}
+                                    </div>
+                                    <div class="flex items-center space-x-3 pt-2 border-t border-slate-100">
+                                        <div class="flex-1">
+                                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Posizione Preferenza</label>
+                                            <input type="number" min="1" max="${restaurants.length}" value="${existingRank}" class="rank-input w-full px-3 py-1.5 text-sm border border-slate-300 rounded-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                        </div>
+                                        <div class="flex-1">
+                                            <label class="block text-[10px] font-bold text-red-500 uppercase mb-1">Motivo Veto (opzionale)</label>
+                                            <input type="text" placeholder="Es. Senza glutine" value="${escapeHtml(existingVeto)}" class="veto-input w-full px-3 py-1.5 text-sm border border-red-200 bg-red-50/50 rounded-xl text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500">
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+
+                    <button onclick="submitVote()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl text-sm transition shadow-lg shadow-indigo-200 mt-4">
+                        Invia / Aggiorna Voto 🚀
+                    </button>
+                </div>
+            `;
+        }
+
+        window.submitVote = async function() {
+            const cards = document.querySelectorAll('.voting-card');
+            const rankings = {};
+            const vetoes = {};
+
+            cards.forEach(card => {
+                const id = card.getAttribute('data-id');
+                const rankVal = parseInt(card.querySelector('.rank-input').value) || 1;
+                const vetoVal = card.querySelector('.veto-input').value.trim();
+
+                if (vetoVal) {
+                    vetoes[id] = vetoVal;
+                } else {
+                    rankings[id] = rankVal;
+                }
+            });
+
+            const voteObj = {
+                voterId: participantName + '_' + Date.now(),
+                voterName: participantName,
+                rankings: rankings,
+                vetoes: vetoes,
+                timestamp: Date.now()
+            };
+
+            try {
+                const docRef = db.collection("rooms").doc(currentRoomCode);
+                const currentVotes = roomData.votes || [];
+                const filtered = currentVotes.filter(v => v.voterName.toLowerCase() !== participantName.toLowerCase());
+
+                await docRef.update({
+                    votes: [...filtered, voteObj]
+                });
+                alert("Voto registrato con successo! 🎉");
+            } catch (err) {
+                alert("Errore invio voto: " + err.message);
+            }
+        };
+
+        function renderResultsPhase(container) {
+            const votes = roomData.votes || [];
+
+            container.innerHTML = `
+                <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-start space-x-3">
+                    <span class="text-2xl">🏆</span>
+                    <div>
+                        <h4 class="font-bold text-sm text-emerald-950">Fase 3: Risultati Finali</h4>
+                        <p class="text-xs text-emerald-800 mt-0.5">La votazione è terminata. Controlla l'app Android principale per i dettagli completi del metodo di Schulze!</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 text-center space-y-4">
+                    <div class="w-16 h-16 mx-auto bg-amber-100 rounded-full flex items-center justify-center text-3xl">
+                        🥇
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-xl text-slate-900">Votazione Conclusa</h3>
+                        <p class="text-xs text-slate-500 mt-1">Schede raccolte: ${votes.length}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
